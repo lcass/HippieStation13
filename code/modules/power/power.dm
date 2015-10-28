@@ -501,7 +501,7 @@
 					s.set_up(5, 1, src)
 					s.start()
 					Destroy()
-	if(stored_power + input_power <= 10000000)
+	if(stored_power + input_power <= 5000000)
 		if(powernet.avail - powernet.load >= input_power)
 			add_load(input_power)
 			stored_power += input_power
@@ -578,12 +578,12 @@
 	desc = "A machine capable of rapidly transferring large amounts of power."
 /obj/machinery/power/modification/power_emitter/proc/restore()
 	var/excess = powernet.avail - powernet.load
-	if(stored_power + excess <= 10000000)
+	if(stored_power + excess <= 5000000)
 		stored_power += excess
 		add_load(excess)
 	else
-		add_load(10000000 - stored_power)
-		stored_power += 10000000 - stored_power
+		add_load(5000000 - stored_power)
+		stored_power += 5000000 - stored_power
 /obj/machinery/power/modification/power_emitter/attackby(obj/item/W, mob/user, params)
 	if(istype(W , /obj/item/weapon/screwdriver))
 		if(output_power + 100000 > 5000000)
@@ -626,7 +626,7 @@
 	user<<"The power storage gauge reads [stored_power]W with an output amount of [output_power]W"
 
 /obj/machinery/power/modification/power_emitter/proc/add_power(amount)
-	if((stored_power + amount) <= 10000000)
+	if((stored_power + amount) <= 5000000)
 		stored_power += amount
 		return 1
 	else
@@ -745,14 +745,15 @@
 	for(var/obj/machinery/power/modification/power_emitter/emitter in connections)
 		emittern ++
 	for(var/obj/machinery/power/modification/power_collector/collector in connections)
-		if(power + collector.stored_power <= 10000000)
-			if(collector.remove_power(collector.stored_power))
-				power += collector.stored_power
-				starting_power += collector.stored_power
-		else if(collector.stored_power >= 10000000 - power)
-			collector.stored_power -= 10000000 - power
-			power = 10000000
-			starting_power += 10000000 - power
+		var/collector_power = collector.stored_power
+		if(power + collector_power <= 5000000)
+			if(collector.remove_power(collector_power))
+				power += collector_power
+				starting_power += collector_power
+		else if(collector.stored_power >= 5000000 - power)
+			collector.stored_power -= 5000000 - power
+			power = 5000000
+			starting_power += 5000000 - power
 		collectorn ++
 		evoltage += collector.voltage
 	for(var/obj/machinery/power/modification/power_capacitor/capacitor in connections)
@@ -766,8 +767,8 @@
 				emitter.voltage = voltage
 				emittern --
 			else
-				emitter.add_power((10000000 - emitter.stored_power)/emittern)
-				power -= (10000000 - emitter.stored_power)/emittern
+				emitter.add_power((5000000 - emitter.stored_power)/emittern)
+				power -= (5000000 - emitter.stored_power)/emittern
 				emittern --
 				emitter.voltage = voltage
 		else if((avail_power - used_power))
@@ -776,8 +777,8 @@
 				emitter.voltage = voltage
 				emittern --
 			else
-				emitter.add_power((10000000 - emitter.stored_power)/emittern)//evenly distribute the power between each of the machines
-				used_power += (10000000 - emitter.stored_power)/emittern
+				emitter.add_power((5000000 - emitter.stored_power)/emittern)//evenly distribute the power between each of the machines
+				used_power += (5000000 - emitter.stored_power)/emittern
 				emittern --
 				emitter.voltage = voltage
 	for(var/obj/machinery/power/controller/power_transformer/transformer in connections)//then handle transformers
@@ -818,7 +819,7 @@
 /obj/machinery/power/controller/power_transformer
 	name = "High voltage transformer"
 	desc = "Groups input power into a single output without generating extra load."
-	var/upperthreshold = 10
+	var/upperthreshold = 5
 	var/lowerthreshold = 2
 	efficiency = 0.7//0.3 goes to heat in this case
 	var/voltage = 2
@@ -856,17 +857,18 @@
 		if(power + collector.input_power <= 3000000)
 			if(collector.remove_power(collector.input_power))
 				power += collector.input_power
-				voltagen += collector.voltage
+		voltagen += collector.voltage
+		collectorn ++
 	if(collectorn)
 		voltagen = voltagen/collectorn
 	for(var/obj/machinery/power/modification/power_emitter/emitter in connections)
 		if(power - output_power >= 0)
 			if(emitter.add_power(output_power*efficiency))
 				power -= output_power
-				if(inverted)
-					emitter.voltage = voltage/voltage
-				else
-					emitter.voltage = voltagen * voltage
+		if(inverted)
+			emitter.voltage = voltagen / voltage
+		else
+			emitter.voltage = voltagen * voltage
 	var/turf/simulated/location = loc
 	if(loc)
 		if(location.air)
