@@ -131,7 +131,7 @@ var/global/list/rad_collectors = list()
 	if(P && active)
 		var/power_produced = 0
 		power_produced = P.air_contents.toxins*pulse_strength*20
-		add_avail(power_produced)
+		add_avail(power_produced,10000)
 		last_power = power_produced
 		return
 	return

@@ -96,7 +96,8 @@
 	var/global/list/status_overlays_equipment
 	var/global/list/status_overlays_lighting
 	var/global/list/status_overlays_environ
-
+	var/odd_voltage = 75000
+	max_voltage = 250000
 /obj/machinery/power/apc/updateDialog()
 	if (stat & (BROKEN|MAINT))
 		return
@@ -112,6 +113,8 @@
 
 /obj/machinery/power/apc/New(turf/loc, var/ndir, var/building=0)
 	..()
+	odd_voltage = rand(odd_voltage , 2 * odd_voltage)//prevents the entire powernet getting dunked over by a rogue trasformer
+	max_voltage = rand(max_voltage , 2 * max_voltage)
 	apcs_list += src
 
 	wires = new(src)
@@ -941,7 +944,7 @@
 				src.malfhack = 1
 				update_icon()
 				var/datum/effect/effect/system/smoke_spread/smoke = new
-				smoke.set_up(1, src.loc)
+				smoke.set_up(3, 0, src.loc)
 				smoke.attach(src)
 				smoke.start()
 				var/datum/effect/effect/system/spark_spread/s = new
@@ -971,6 +974,31 @@
 
 	if(stat & (BROKEN|MAINT))
 		return
+	if(terminal)
+		if(terminal.powernet)
+			if(terminal.powernet.voltage >= odd_voltage)
+				if(prob(1))
+					src.overload_lighting()
+				if(prob(5))
+					lighting = rand(1,3)
+					equipment = rand(1,3)
+					environ = rand(1,3)
+					if(terminal.powernet.current > 300)
+						for(var/area/A in area.related)
+							for(var/obj/machinery/machinery in A)
+								if(prob(1) && prob(10))//1 in 1000 chance
+									machinery.Destroy()
+									src.visible_message("<span class='danger'>The [machinery.name] sparks as it overloads!</span>")
+									explosion(machinery.loc , -1  ,0 ,0 , 3)
+									var/datum/effect/effect/system/spark_spread/s = new /datum/effect/effect/system/spark_spread
+									s.set_up(5, 2, machinery.loc)
+									s.start()
+			if(terminal.powernet.voltage >= max_voltage)
+				src.visible_message("<span class='danger'>The [src.name] explodes in a blinding flash , sparks shoot from it's connections!</span>")
+				explosion(src.loc , -1  ,1 ,2 , 7)
+				var/datum/effect/effect/system/spark_spread/s = new /datum/effect/effect/system/spark_spread
+				s.set_up(5, 2, src.loc)
+				s.start()
 	if(!area.requires_power)
 		return
 

@@ -34,26 +34,28 @@
 	last_time = world.time
 
 	// special power handling
-	var/area/A = get_area(src)
-	if(!isarea(A))
+	var/obj/structure/cable/cable = locate(/obj/structure/cable) in src.loc
+	if(!cable)
 		return
-	if(!A.powered(EQUIP))
+	if(!cable.powernet)
 		return
-	A.use_power(EQUIP, 5000)
-	var/light = A.power_light
-	A.updateicon()
-
-	flick("echair1", src)
-	var/datum/effect/effect/system/spark_spread/s = new /datum/effect/effect/system/spark_spread
-	s.set_up(12, 1, src)
-	s.start()
-	if(buckled_mob)
-		buckled_mob.burn_skin(85)
-		buckled_mob << "<span class='userdanger'>You feel a deep shock course through your body!</span>"
-		sleep(1)
-		buckled_mob.burn_skin(85)
-	visible_message("<span class='danger'>The electric chair went off!</span>", "<span class='italics'>You hear a deep sharp shock!</span>")
-
-	A.power_light = light
-	A.updateicon()
+	if(cable.powernet.avail - cable.powernet.load >= 100000)
+		if(cable.powernet.voltage >= 50000)
+			cable.add_load(100000)
+			flick("echair1", src)
+			var/datum/effect/effect/system/spark_spread/s = new /datum/effect/effect/system/spark_spread
+			s.set_up(12, 1, src)
+			s.start()
+			if(buckled_mob)
+				buckled_mob.burn_skin(85)
+				buckled_mob << "<span class='userdanger'>You feel a deep shock course through your body!</span>"
+				sleep(1)
+				buckled_mob.burn_skin(85)
+			visible_message("<span class='danger'>The electric chair went off!</span>", "<span class='italics'>You hear a deep sharp shock!</span>")
+		else
+			var/datum/effect/effect/system/spark_spread/s = new /datum/effect/effect/system/spark_spread
+			s.set_up(2, 1, src)
+			s.start()
+			visible_message("<span class='danger'>The electric chair fizzles slightly</span>")
+			electrocute_mob(buckled_mob, cable.powernet, src.loc, 0.1)
 	return

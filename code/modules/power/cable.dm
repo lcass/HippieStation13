@@ -35,7 +35,16 @@ By design, d1 is the smallest direction and d2 is the highest
 	layer = 2.44 //Just below unary stuff, which is at 2.45 and above pipes, which are at 2.4
 	var/cable_color = "red"
 	var/obj/item/stack/cable_coil/stored
+	var/max_current = 1000
+	var/hotspot_limit = 750
+	var/current_heat_coeff = 0.002
 
+/obj/structure/cable/high_power
+	name = "High current power cable"
+	desc = "A cable that supports extremely high current loads"
+	max_current = 2000
+	hotspot_limit = 1500
+	current_heat_coeff = 3//much hotter
 /obj/structure/cable/yellow
 	cable_color = "yellow"
 	icon = 'icons/obj/power_cond/power_cond_yellow.dmi'
@@ -116,9 +125,70 @@ By design, d1 is the smallest direction and d2 is the highest
 
 
 // returns the powernet this cable belongs to
+
 /obj/structure/cable/proc/get_powernet()			//TODO: remove this as it is obsolete
 	return powernet
+/obj/structure/cable/proc/waveform_enact(waveform , overload)
+	return
+/obj/structure/cable/proc/overload_enact(current,voltage)
+	var/delete = 0
+	if(!powernet)
+		return
+	if(current > max_current)
+		var/obj/effect/hotspot/hotspot = new /obj/effect/hotspot(get_turf(src))
+		hotspot.temperature = powernet.current * current_heat_coeff
+		delete = 1
+	else if(current >= hotspot_limit)
+		var/obj/effect/hotspot/hotspot = new /obj/effect/hotspot(get_turf(src))
+		hotspot.temperature = powernet.current * current_heat_coeff
+	else
+		var/temp_loc = loc
+		if(istype(temp_loc,/turf/simulated))
+			var/turf/simulated/location = loc
+			if(location.air)
+				location.air.temperature += powernet.current * current_heat_coeff
+	if(voltage >= 500000)
+		var/datum/effect/effect/system/spark_spread/s = new /datum/effect/effect/system/spark_spread
+		s.set_up(5, 3, src)
+		s.start()
+		for(var/mob/living/carbon/M in view(4))
+			electrocute_mob(M, powernet, src.loc, 0.4)
+		if(prob(100-((100000/voltage)*100)))//higher probability at higher voltages
+			for(var/obj/machinery/light/light in view(rand(1,15)))
+				light.explode()
+			for(var/obj/machinery/door/airlock/door in view(rand(1,5)))
+				if(prob(15))
+					door.emag_act(null)
+			delete = 1
+	else if(voltage >= 150000)
+		var/datum/effect/effect/system/spark_spread/s = new /datum/effect/effect/system/spark_spread
+		s.set_up(5, 2, src)
+		s.start()
+		for(var/mob/living/carbon/M in view(3))
+			electrocute_mob(M, powernet, src.loc, 0.3)
+	else if(voltage >= 100000)
+		var/datum/effect/effect/system/spark_spread/s = new /datum/effect/effect/system/spark_spread
+		s.set_up(5, 1, src)
+		s.start()
+		for(var/mob/living/carbon/M in view(2))
 
+			electrocute_mob(M, powernet, src.loc, 0.2)
+
+	else if(voltage >= 50000)
+		for(var/mob/living/carbon/M in view(1))
+			var/datum/effect/effect/system/spark_spread/s = new /datum/effect/effect/system/spark_spread
+			s.set_up(5, 1, src)
+			s.start()
+			electrocute_mob(M, powernet, src.loc, 0.1)
+		if(prob(100-((40000/voltage)*100)))
+			for(var/obj/machinery/light/light in view(rand(1,15)))
+				light.Destroy()
+	else if (voltage>= 10000)
+		if(prob(100-((20000/voltage)*100)))
+			for(var/obj/machinery/light/light in view(rand(1,15)))
+				light.flicker()
+	if(delete)
+		qdel(src)
 //Telekinesis has no effect on a cable
 /obj/structure/cable/attack_tk(mob/user)
 	return
@@ -150,7 +220,7 @@ By design, d1 is the smallest direction and d2 is the highest
 
 	else if(istype(W, /obj/item/device/multitool))
 		if(powernet && (powernet.avail > 0))		// is it powered?
-			user << "<span class='danger'>[powernet.avail]W in power network.</span>"
+			user << "<span class='danger'>[powernet.avail]W in power network with a voltage of [powernet.voltage]V.</span>"
 		else
 			user << "<span class='danger'>The cable is not powered.</span>"
 		shock(user, 5, 0.2)

@@ -35,7 +35,8 @@
 	var/output_level = 50000 // amount of power the SMES attempts to output
 	var/output_level_max = 200000 // cap on output_level
 	var/output_used = 0 // amount of power actually outputted. may be less than output_level if the powernet returns excess power
-
+	var/voltage = 5000
+	var/power_constant = 200000
 	var/obj/machinery/power/terminal/terminal = null
 
 	var/static/list/smesImageCache
@@ -74,8 +75,8 @@
 	var/C = 0
 	for(var/obj/item/weapon/stock_parts/capacitor/CP in component_parts)
 		IO += CP.rating
-	input_level_max = 200000 * IO
-	output_level_max = 200000 * IO
+	input_level_max = power_constant * IO
+	output_level_max = power_constant * IO
 	for(var/obj/item/weapon/stock_parts/cell/PC in component_parts)
 		C += PC.maxcharge
 	capacity = C / (15000) * 1e6
@@ -256,14 +257,16 @@
 		else
 			if(input_attempt && input_available > 0 && input_available >= input_level)
 				inputting = 1
-
+	if(terminal)
+		if(terminal.powernet)
+			voltage = terminal.powernet.voltage
 	//outputting
 	if(outputting)
 		output_used = min( charge/SMESRATE, output_level)		//limit output to that stored
 
 		charge -= output_used*SMESRATE		// reduce the storage (may be recovered in /restore() if excessive)
 
-		add_avail(output_used)				// add output to powernet (smes side)
+		add_avail(output_used,voltage)				// add output to powernet (smes side)
 
 		if(output_used < 0.0001)			// either from no charge or set to 0
 			outputting = 0

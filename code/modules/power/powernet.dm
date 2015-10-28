@@ -12,9 +12,40 @@
 	var/viewload = 0			// the load as it appears on the power console (gradually updated)
 	var/number = 0				// Unused //TODEL
 	var/netexcess = 0			// excess power on the powernet (typically avail-load)///////
-
+	var/voltage = 5000 //set it to the default , different power sources can provide different voltages and different machines can use different voltages
+	var/current = 0
+	var/current_threshold = 3
+	var/voltage_threshold = 500
+	var/use_power = 0
+	var/colliding = 0
+	var/new_waveform = 0
+	var/waveform = 0 //for an upcoming powernet update
 /datum/powernet/New()
+
 	SSmachine.powernets += src
+
+/datum/powernet/proc/add_avail(var/power , var/pvoltage)
+	var/ccurrent = 0//as it's not calculated at each point find the average voltage over the entire system and just use that.
+	if(avail && voltage)
+		ccurrent = (newavail/voltage)
+	var/acurrent = (power/pvoltage)
+	newavail+=power
+	if(ccurrent || acurrent)
+		voltage = newavail/(ccurrent+acurrent)
+	current = get_current()
+/datum/powernet/proc/add_waveform(var/waveform)
+	if(new_waveform)//more than one waveform generator causes you to have interference and he dampening of the second signal
+		new_waveform += waveform/new_waveform
+		colliding = 1
+	else
+		new_waveform = waveform
+		colliding = 0
+/datum/powernet/proc/get_current()
+	if(!avail)
+		return 0
+	if(!voltage)
+		return 0
+	return (avail/voltage)
 
 /datum/powernet/Destroy()
 	//Go away references, you suck!
@@ -24,7 +55,6 @@
 	for(var/obj/machinery/power/M in nodes)
 		nodes -= M
 		M.powernet = null
-
 	SSmachine.powernets -= src
 	return ..()
 
@@ -72,28 +102,33 @@
 	M.powernet = src
 	nodes[M] = M
 
-//handles the power changes in the powernet
-//called every ticks by the powernet controller
 /datum/powernet/proc/reset()
-
 	//see if there's a surplus of power remaining in the powernet and stores unused power in the SMES
 	netexcess = avail - load
-
 	if(netexcess > 100 && nodes && nodes.len)		// if there was excess power last cycle
 		for(var/obj/machinery/power/smes/S in nodes)	// find the SMESes in the network
-			S.restore()				// and restore some of the power that was used
-
+			S.restore()	// and restore some of the power that was used
+		for(var/obj/machinery/power/modification/power_emitter/E in nodes)
+			E.restore()
 	//updates the viewed load (as seen on power computers)
 	viewload = 0.8*viewload + 0.2*load
 	viewload = round(viewload)
-
 	//reset the powernet
 	load = 0
 	avail = newavail
 	newavail = 0
-
+	waveform = new_waveform
+	current = get_current()
+	for(var/obj/machinery/power/modification/surge_protector/surge in nodes)
+		surge.protect()
+	if(current >= current_threshold || voltage >= voltage_threshold)
+		var/limit = rand(0,cables.len/10)
+		for(var/i = 0 , i < limit, i++)
+			var/obj/structure/cable/chosen_cable = pick(cables)
+			chosen_cable.overload_enact(current,voltage)
+			chosen_cable.waveform_enact(waveform,colliding)
 /datum/powernet/proc/get_electrocute_damage()
-	if(avail >= 1000)
-		return Clamp(round(avail/10000), 10, 90) + rand(-5,5)
+	if((avail/voltage) >= 0.5)
+		return Clamp(round((avail/voltage)/10), 10, 90) + rand(-5,5)
 	else
 		return 0

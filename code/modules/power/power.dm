@@ -14,6 +14,7 @@
 	use_power = 0
 	idle_power_usage = 0
 	active_power_usage = 0
+	var/max_voltage = 1000//max it out so nothing splodes under normal use.
 
 /obj/machinery/power/Destroy()
 	disconnect_from_network()
@@ -24,9 +25,9 @@
 //////////////////////////////
 
 // common helper procs for all power machines
-/obj/machinery/power/proc/add_avail(amount)
+/obj/machinery/power/proc/add_avail(amount,var/voltage = 5000)
 	if(powernet)
-		powernet.newavail += amount
+		powernet.add_avail(amount,voltage)
 
 /obj/machinery/power/proc/add_load(amount)
 	if(powernet)
@@ -330,7 +331,6 @@
 		shock_damage = cell_damage
 	var/drained_hp = M.electrocute_act(shock_damage, source, siemens_coeff) //zzzzzzap!
 	var/drained_energy = drained_hp*20
-
 	if (source_area)
 		source_area.use_power(drained_energy/CELLRATE)
 	else if (istype(power_source,/datum/powernet))
@@ -359,3 +359,538 @@
 	for(var/obj/machinery/power/apc/APC in apcs_list)
 		if(APC.area == src)
 			return APC
+
+///////////////////////////////////////////////
+//Power machinery.
+//////////////////////////////////////////////
+/obj/machinery/power/modification //waveforms are stopped by all these machinery
+	name = "you shouldn't be seeing this"
+	desc = "A machine that can take incredibly high power loads and output them to nearby machines"
+	icon = 'icons/wip/stock_parts.dmi'
+	icon_state = "vbox_complete"
+	density = 1
+	anchored = 1
+	var/voltage = 5000
+	use_power = 0
+	var/obj/machinery/power/controller/connected
+	var/input_power = 500000
+	var/output_power = 500000
+	var/stored_power = 0
+/obj/machinery/power/modification/New()
+	..()
+	connect_to_network()
+	var/obj/machinery/power/controller/up = locate(/obj/machinery/power/controller) in get_step(src,NORTH)
+	var/obj/machinery/power/controller/right = locate(/obj/machinery/power/controller) in get_step(src,EAST)
+	var/obj/machinery/power/controller/down = locate(/obj/machinery/power/controller) in get_step(src,SOUTH)
+	var/obj/machinery/power/controller/left = locate(/obj/machinery/power/controller) in get_step(src,WEST)
+	if(up)
+		up.update_connections()
+	if(down)
+		down.update_connections()
+	if(left)
+		left.update_connections()
+	if(right)
+		right.update_connections()
+/obj/machinery/power/modification/examine(mob/user)
+	user<<"The power storage gauge reads [stored_power]W with an input amount of [input_power]W"
+/obj/machinery/power/modification/Destroy()
+	..()
+	if(connected)
+		connected.connections.Remove(src)
+
+/obj/machinery/power/modification/surge_protector
+	name = "High Power Capacitor"
+	desc = "A is able to store small amounts of power in order to create an UPS"
+	var/max_amps = 500
+	use_power = 0//handled directly inside the powernet datum for timing reasons.
+	var/max_volts = 50000
+/obj/machinery/power/modification/surge_protector/examine(mob/user)
+	user<<"The surge rating reads [max_amps]A [max_volts]V"
+/obj/machinery/power/modification/surge_protector/proc/protect()
+	//not affected by temperature but they explode if they have too much power run through them
+	var/total_dispersed = 0
+	var/voltage_diff = 5//passive power usage is 25 watts
+	var/current_diff = 5
+	if(!powernet)
+		return
+	if(powernet.voltage > max_volts)//directly modify the current and voltage values so things don't explode on that tick  and then calculate the power loss
+		voltage_diff = powernet.voltage - max_volts
+		powernet.voltage -= voltage_diff
+	if(powernet.get_current() > max_amps)
+		current_diff = powernet.get_current() - max_amps
+		powernet.current -= current_diff
+	powernet.avail -= voltage_diff * current_diff
+	//sort out the heating
+	var/turf/simulated/location = loc
+	if(loc)
+		if(location.air)
+			location.air.temperature += ((total_dispersed /1000000) * (total_dispersed/1000000))/2 //dispersing 1 mil watts is 0.5 heat per tick dispersing 4 mil watts it 8 heat per tick.
+/obj/machinery/power/modification/surge_protector/attackby(obj/item/weapon/W , mob/user , params)
+	if(istype(W , /obj/item/weapon/screwdriver))
+		if(max_voltage + 10000 >= 200000)
+			max_voltage = 50000
+		else
+			max_voltage += 10000
+		user<<"<span class='notice'>You adjust the voltage setting on the [src.name] to [max_voltage]v</span>"
+	else if(istype(W , /obj/item/device/multitool))
+		if(max_amps + 100 >= 1000)
+			max_amps = 100
+		else
+			max_amps += 100
+		user<<"<span class='notice'>You adjust the amperage setting on the [src.name] to [max_amps]A</span>"
+
+/obj/machinery/power/modification/power_collector
+	name = "High power collector"
+	desc = "A machine that can take incredibly high power loads and output them to nearby machines"
+/obj/machinery/power/modification/power_collector/attackby(obj/item/W, mob/user, params)
+	if(istype(W , /obj/item/weapon/screwdriver))
+		if(input_power + 100000 > 5000000)
+			input_power = 100000
+		else
+			input_power += 100000
+		user<<"<span class='notice'>You adjust the [src.name]'s power input by 100000W to [input_power]W</span>"
+	if(istype(W , /obj/item/weapon/wrench))
+		if(anchored)
+			user<<"<span class='notice'>You remove the [src.name]'s bolts.</span>"
+			anchored = 0
+			if(connected)
+				connected.update_connections()
+				connected = null
+		else
+			user<<"<span class='notice'>You secure the [src.name]'s bolts.</span>"
+			anchored = 1
+			var/obj/machinery/power/controller/up = locate(/obj/machinery/power/controller) in get_step(src,NORTH)
+			var/obj/machinery/power/controller/right = locate(/obj/machinery/power/controller) in get_step(src,EAST)
+			var/obj/machinery/power/controller/down = locate(/obj/machinery/power/controller) in get_step(src,SOUTH)
+			var/obj/machinery/power/controller/left = locate(/obj/machinery/power/controller) in get_step(src,WEST)
+			if(up)
+				up.update_connections()
+			if(down)
+				down.update_connections()
+			if(left)
+				left.update_connections()
+			if(right)
+				right.update_connections()
+
+/obj/machinery/power/modification/power_collector/examine(mob/user)
+	user<<"The power storage gauge reads [stored_power]W with an input amount of [input_power]W"
+/obj/machinery/power/modification/power_collector/proc/remove_power(amount)
+	if(stored_power >= amount)
+		stored_power -= amount
+		return 1
+	else
+		return 0
+/obj/machinery/power/modification/power_collector/process()
+
+	if(powernet== null)
+		return
+	var/turf/simulated/location = loc
+	if(loc)
+		if(location.air)
+			voltage -= (location.temperature /2)//rapidly drop the input voltage
+			if(voltage <= 0)
+				voltage = 1
+			if(location.temperature >= 500)
+				if(prob(5))
+					var/datum/effect/effect/system/smoke_spread/smoke = new /datum/effect/effect/system/smoke_spread()
+					smoke.set_up(loca = src.loc)
+					smoke.start()
+			if(location.temperature >= 5000)
+				if(prob(5))
+					var/datum/effect/effect/system/spark_spread/s = new /datum/effect/effect/system/spark_spread
+					s.set_up(5, 1, src)
+					s.start()
+					Destroy()
+	if(stored_power + input_power <= 10000000)
+		if(powernet.avail - powernet.load >= input_power)
+			add_load(input_power)
+			stored_power += input_power
+		else
+			stored_power += powernet.avail - powernet.load
+			add_load(powernet.avail - powernet.load)
+	voltage = powernet.voltage
+
+
+		return
+
+/obj/machinery/power/modification/power_capacitor
+	name = "High Power Capacitor"
+	desc = "A is able to store small amounts of power in order to create an UPS"
+	var/max_power = 5000000
+/obj/machinery/power/modification/power_capacitor/examine(mob/user)
+	user<<"The power storage gauge reads [stored_power]W"
+/obj/machinery/power/modification/power_capacitor/proc/remove_power(amount)
+	if(stored_power >= amount)
+		stored_power -= amount
+		return 1
+	else
+		return 0
+/obj/machinery/power/modification/power_capacitor/process()
+	if(stored_power)
+		var/turf/simulated/location = loc
+		stored_power -= (stored_power/max_power) * 1000
+		if(location)
+			if(location.air)
+				location.air.temperature += (stored_power/max_power) * 5
+				if(location.temperature >= 500)
+					if(prob(5))
+						var/datum/effect/effect/system/smoke_spread/smoke = new /datum/effect/effect/system/smoke_spread()
+						smoke.set_up(loca = src.loc)
+						smoke.start()
+						stored_power = 0
+				if(location.temperature >= 5000)
+					if(prob(5))
+						var/datum/effect/effect/system/spark_spread/s = new /datum/effect/effect/system/spark_spread
+						s.set_up(5, 1, src)
+						s.start()
+						Destroy()
+/obj/machinery/power/modification/power_capacitor/attackby(obj/item/weapon/W , mob/user , params)
+	if(istype(W , /obj/item/weapon/wrench))
+		if(anchored)
+			user<<"<span class='notice'>You remove the [src.name]'s bolts.</span>"
+			anchored = 0
+			if(connected)
+				connected.update_connections()
+				connected = null
+		else
+			user<<"<span class='notice'>You secure the [src.name]'s bolts.</span>"
+			anchored = 1
+			var/obj/machinery/power/controller/up = locate(/obj/machinery/power/controller) in get_step(src,NORTH)
+			var/obj/machinery/power/controller/right = locate(/obj/machinery/power/controller) in get_step(src,EAST)
+			var/obj/machinery/power/controller/down = locate(/obj/machinery/power/controller) in get_step(src,SOUTH)
+			var/obj/machinery/power/controller/left = locate(/obj/machinery/power/controller) in get_step(src,WEST)
+			if(up)
+				up.update_connections()
+			if(down)
+				down.update_connections()
+			if(left)
+				left.update_connections()
+			if(right)
+				right.update_connections()
+/obj/machinery/power/modification/power_capacitor/proc/add_power(power)
+	if(stored_power + power <= max_power)
+		stored_power += power
+		return 1
+	else
+		return 0
+/obj/machinery/power/modification/power_emitter
+	name = "High power disperser"
+	desc = "A machine capable of rapidly transferring large amounts of power."
+/obj/machinery/power/modification/power_emitter/proc/restore()
+	var/excess = powernet.avail - powernet.load
+	if(stored_power + excess <= 10000000)
+		stored_power += excess
+		add_load(excess)
+	else
+		add_load(10000000 - stored_power)
+		stored_power += 10000000 - stored_power
+/obj/machinery/power/modification/power_emitter/attackby(obj/item/W, mob/user, params)
+	if(istype(W , /obj/item/weapon/screwdriver))
+		if(output_power + 100000 > 5000000)
+			output_power = 100000
+		else
+			output_power += 100000
+		user<<"<span class='notice'>You adjust the [src.name]'s power output by 10000W to [output_power]W</span>"
+	if(istype(W , /obj/item/weapon/wrench))
+		if(anchored)
+			user<<"<span class='notice'>You remove the [src.name]'s bolts.</span>"
+			anchored = 0
+			if(connected)
+				connected.update_connections()
+				connected = null
+		else
+			user<<"<span class='notice'>You secure the [src.name]'s bolts.</span>"
+			anchored = 1
+			var/obj/machinery/power/controller/up = locate(/obj/machinery/power/controller) in get_step(src,NORTH)
+			var/obj/machinery/power/controller/right = locate(/obj/machinery/power/controller) in get_step(src,EAST)
+			var/obj/machinery/power/controller/down = locate(/obj/machinery/power/controller) in get_step(src,SOUTH)
+			var/obj/machinery/power/controller/left = locate(/obj/machinery/power/controller) in get_step(src,WEST)
+			if(up)
+				up.update_connections()
+			if(down)
+				down.update_connections()
+			if(left)
+				left.update_connections()
+			if(right)
+				right.update_connections()
+/obj/machinery/power/modification/power_emitter/Destroy()
+	..()
+	if(connected)
+		connected.connections.Remove(src)
+
+/obj/machinery/power/modification/power_emitter/New()
+	..()
+	connect_to_network()
+
+/obj/machinery/power/modification/power_emitter/examine(mob/user)
+	user<<"The power storage gauge reads [stored_power]W with an output amount of [output_power]W"
+
+/obj/machinery/power/modification/power_emitter/proc/add_power(amount)
+	if((stored_power + amount) <= 10000000)
+		stored_power += amount
+		return 1
+	else
+		return 0
+
+/obj/machinery/power/modification/power_emitter/process()
+	if(!powernet)
+		return
+	if(stored_power >= output_power)
+		add_avail(output_power,voltage)
+		stored_power -= output_power
+		return
+/obj/machinery/power/controller
+	name = "You should not see this"
+	desc = "Groups input power into a single output without generating extra load."
+	icon = 'icons/wip/stock_parts.dmi'
+	icon_state = "vbox_connector"
+	density = 1
+	anchored = 1
+	var/efficiency = 0.7//0.3 goes to heat in this case
+	use_power = 0
+	var/power = 0
+	var/obj/machinery/power/connected
+	var/list/connections = list()
+/obj/machinery/power/controller/Destroy()
+	SSmachine.processing -= src
+/obj/machinery/power/controller/New()
+	update_connections()
+	var/obj/machinery/power/controller/up = locate(/obj/machinery/power/controller) in get_step(src,NORTH)
+	var/obj/machinery/power/controller/right = locate(/obj/machinery/power/controller) in get_step(src,EAST)
+	var/obj/machinery/power/controller/down = locate(/obj/machinery/power/controller) in get_step(src,SOUTH)
+	var/obj/machinery/power/controller/left = locate(/obj/machinery/power/controller) in get_step(src,WEST)
+	if(up)
+		up.update_connections()
+	if(down)
+		down.update_connections()
+	if(left)
+		left.update_connections()
+	if(right)
+		right.update_connections()
+	SSmachine.processing |= src
+/obj/machinery/power/controller/attackby(obj/item/W, mob/user, params)
+	if(istype(W , /obj/item/weapon/wrench))
+		if(anchored)
+			user<<"<span class='notice'>You remove the [src.name]'s bolts.</span>"
+			anchored = 0
+			update_connections()
+		else
+			user<<"<span class='notice'>You secure the [src.name]'s bolts.</span>"
+			anchored = 1
+			update_connections()
+/obj/machinery/power/controller/proc/update_connections()
+	for(var/obj/machinery/power/modification/m in connections)
+		m.connected = null
+	connections = list()
+	if(!anchored)
+		return
+	var/obj/machinery/power/modification/up = locate(/obj/machinery/power) in get_step(src,NORTH)
+	var/obj/machinery/power/modification/right = locate(/obj/machinery/power) in get_step(src,EAST)
+	var/obj/machinery/power/modification/down = locate(/obj/machinery/power) in get_step(src,SOUTH)
+	var/obj/machinery/power/modification/left = locate(/obj/machinery/power) in get_step(src,WEST)
+	if(up)
+		if(up.anchored)
+
+
+			connections.Add(up)
+	if(down)
+		if(down.anchored)
+			down.connected = src
+			connections.Add(down)
+	if(left)
+		if(left.anchored)
+			left.connected = src
+			connections.Add(left)
+	if(right)
+		if(right.anchored)
+			right.connected = src
+			connections.Add(right)
+
+/obj/machinery/power/controller/power_grouper
+	name = "Power grouper"
+	desc = "Groups input power into a single output without generating extra load."
+	efficiency = 0.99
+	var/voltage = 5000
+/obj/machinery/power/controller/power_grouper/examine(mob/user)
+	user<<"The power storage gauge reads [power]W"
+
+/obj/machinery/power/controller/power_grouper/process()
+	var/collectorn = 0
+	var/emittern = 0
+	var/evoltage = 0
+	var/avail_power = 0
+	var/starting_power = 0
+	var/used_power = 0
+	var/turf/simulated/location = loc
+	if(loc)
+		if(location.air)
+			if(location.temperature >= 500)
+				if(prob(5))
+					var/datum/effect/effect/system/smoke_spread/smoke = new /datum/effect/effect/system/smoke_spread()
+					smoke.set_up(loca = src.loc)
+					smoke.start()
+					efficiency -= efficiency / 50
+					return
+			else
+				if(efficiency < 0.99)
+					efficiency += 0.05
+				if(efficiency >0.99)
+					efficiency = 0.99
+			if(location.temperature >= 5000)
+				if(prob(5))
+					var/datum/effect/effect/system/spark_spread/s = new /datum/effect/effect/system/spark_spread
+					s.set_up(5, 1, src)
+					s.start()
+					Destroy()
+	for(var/obj/machinery/power/modification/power_emitter/emitter in connections)
+		emittern ++
+	for(var/obj/machinery/power/modification/power_collector/collector in connections)
+		if(power + collector.stored_power <= 10000000)
+			if(collector.remove_power(collector.stored_power))
+				power += collector.stored_power
+				starting_power += collector.stored_power
+		else if(collector.stored_power >= 10000000 - power)
+			collector.stored_power -= 10000000 - power
+			power = 10000000
+			starting_power += 10000000 - power
+		collectorn ++
+		evoltage += collector.voltage
+	for(var/obj/machinery/power/modification/power_capacitor/capacitor in connections)
+		avail_power += capacitor.stored_power
+	if(collectorn)
+		voltage = evoltage /collectorn//calculate the average voltage of the two inputs for the output.
+	for(var/obj/machinery/power/modification/power_emitter/emitter in connections)//prioritise output connections first.
+		if(power)
+			if(emitter.add_power(power / emittern))
+				power -= (power/emittern)
+				emitter.voltage = voltage
+				emittern --
+			else
+				emitter.add_power((10000000 - emitter.stored_power)/emittern)
+				power -= (10000000 - emitter.stored_power)/emittern
+				emittern --
+				emitter.voltage = voltage
+		else if((avail_power - used_power))
+			if(emitter.add_power((avail_power - used_power)/emittern))
+				used_power += (avail_power - used_power)/emittern
+				emitter.voltage = voltage
+				emittern --
+			else
+				emitter.add_power((10000000 - emitter.stored_power)/emittern)//evenly distribute the power between each of the machines
+				used_power += (10000000 - emitter.stored_power)/emittern
+				emittern --
+				emitter.voltage = voltage
+	for(var/obj/machinery/power/controller/power_transformer/transformer in connections)//then handle transformers
+		if(power - transformer.output_power >= 0)
+			if(transformer.add_power(transformer.output_power))
+				power -= transformer.output_power
+				transformer.starting_voltage = voltage
+		else if((avail_power - used_power) - transformer.output_power >= 0)
+			if(transformer.add_power(transformer.output_power))
+				used_power += transformer.output_power
+				transformer.starting_voltage = voltage
+	if(used_power)
+		used_power -= power//excess power is laying around so use that instead
+		for(var/obj/machinery/power/modification/power_capacitor/capacitor in connections)
+
+			if(used_power >= capacitor.stored_power)
+				used_power -= capacitor.stored_power
+				capacitor.stored_power -= capacitor.stored_power
+			else
+				capacitor.stored_power -= used_power
+				used_power = 0
+	if(power)
+		//if we have left over power add it to the reamining capacitors
+		for(var/obj/machinery/power/modification/power_capacitor/capacitor in connections)
+			var/max_power = capacitor.max_power - capacitor.stored_power
+			if(power >= max_power)
+				capacitor.add_power(max_power)
+				power -= max_power
+			else
+				capacitor.add_power(power)
+				power = 0
+	if(!istype(location,/turf/space))
+		location.air.temperature += ((1-efficiency) * (voltage/60)) * (power /5000000)
+		power -= (1-efficiency) * power
+		if(power < 0)
+			power = 0
+
+/obj/machinery/power/controller/power_transformer
+	name = "High voltage transformer"
+	desc = "Groups input power into a single output without generating extra load."
+	var/upperthreshold = 10
+	var/lowerthreshold = 2
+	efficiency = 0.7//0.3 goes to heat in this case
+	var/voltage = 2
+	var/starting_voltage = 5000
+	var/output_power = 1200000
+	var/inverted = 0
+/obj/machinery/power/controller/power_transformer/attackby(obj/item/W, mob/user, params)
+	if(istype(W , /obj/item/weapon/screwdriver))
+		update_connections()//confirm that the devices haven't changed since before.
+		if(voltage + 1 > upperthreshold)
+			voltage = lowerthreshold
+		else
+			voltage += 1
+		user<<"<span class='notice'>You adjust the [src.name]'s voltage amplifier setting to [voltage].</span>"
+	if(istype(W , /obj/item/device/multitool))
+		update_connections()//confirm that the devices haven't changed since before.
+		inverted = !inverted
+		user<<"<span class='notice'>You invert the [src.name]'s coil polarity setting to state [inverted].</span>"
+	..()
+
+/obj/machinery/power/controller/power_transformer/proc/add_power(amount)
+	if(power + amount <= 3000000)
+		power += amount
+		return 1
+	else
+		return 0
+
+/obj/machinery/power/controller/power_transformer/examine(mob/user)
+	user<<"The power storage gauge reads [power]W with an output voltage of [voltage]"
+
+/obj/machinery/power/controller/power_transformer/process()
+	var/collectorn = 0
+	var/voltagen = starting_voltage
+	for(var/obj/machinery/power/modification/power_collector/collector in connections)
+		if(power + collector.input_power <= 3000000)
+			if(collector.remove_power(collector.input_power))
+				power += collector.input_power
+				voltagen += collector.voltage
+	if(collectorn)
+		voltagen = voltagen/collectorn
+	for(var/obj/machinery/power/modification/power_emitter/emitter in connections)
+		if(power - output_power >= 0)
+			if(emitter.add_power(output_power*efficiency))
+				power -= output_power
+				if(inverted)
+					emitter.voltage = voltage/voltage
+				else
+					emitter.voltage = voltagen * voltage
+	var/turf/simulated/location = loc
+	if(loc)
+		if(location.air)
+			if(location.temperature >= 500)
+				if(prob(5))
+					var/datum/effect/effect/system/smoke_spread/smoke = new /datum/effect/effect/system/smoke_spread()
+					smoke.set_up(loca = src.loc)
+					smoke.start()
+					efficiency -= efficiency / 50
+					return
+			else
+				if(efficiency < 0.7)
+					efficiency += 0.05
+				if(efficiency >0.7)
+					efficiency = 0.7
+			if(location.temperature >= 5000)
+				if(prob(5))
+					var/datum/effect/effect/system/spark_spread/s = new /datum/effect/effect/system/spark_spread
+					s.set_up(5, 1, src)
+					s.start()
+					Destroy()
+			location.air.temperature += ((1-efficiency) * (voltage)) * (power/output_power) * 10
+
+/obj/machinery/power/controller/Destroy()
+	..()
+	for(var/obj/machinery/power/modification/emitter in connections)
+		emitter.connected = null

@@ -2,7 +2,7 @@
 //After it knows this it creates the number of cables from the center to each of the cables attempting to conenct. These cables cannot be removed
 //with wirecutters. When the switch is turned off it removes all the cables on the tile it's on.
 //The switch uses a 5s delay to prevent powernet change spamming.
-/*
+
 /obj/structure/powerswitch
 	name = "power switch"
 	desc = "A switch that controls power."
@@ -66,14 +66,9 @@
 			C.d1 = 0
 			C.d2 = direction
 			C.icon_state = "[C.d1]-[C.d2]"
-			C.power_switch = src
-
 			var/datum/powernet/PN = new()
-			PN.number = powernets.len + 1
 			powernets += PN
-			C.netnum = PN.number
-			PN.cables += C
-
+			PN.add_cable(C)
 			C.mergeConnectedNetworks(C.d2)
 			C.mergeConnectedNetworksOnTurf()
 
@@ -81,4 +76,3 @@
 		icon_state = icon_state_off
 		for(var/obj/structure/cable/C in src.loc)
 			qdel(C)
-*/
