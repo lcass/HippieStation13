@@ -399,15 +399,13 @@
 		connected.connections.Remove(src)
 
 /obj/machinery/power/modification/surge_protector
-	name = "Surge Protector"
-	desc = "A machine capable of rapidly dispersing power during a surge."
+	name = "High Power Capacitor"
+	desc = "A is able to store small amounts of power in order to create an UPS"
 	var/max_amps = 500
 	use_power = 0//handled directly inside the powernet datum for timing reasons.
 	var/max_volts = 50000
-
 /obj/machinery/power/modification/surge_protector/examine(mob/user)
-	user<<"The [src.name] has a surge rating of [max_amps]A [max_volts]V"
-
+	user<<"The surge rating reads [max_amps]A [max_volts]V"
 /obj/machinery/power/modification/surge_protector/proc/protect()
 	//not affected by temperature but they explode if they have too much power run through them
 	var/total_dispersed = 0
@@ -428,19 +426,11 @@
 		if(location.air)
 			location.air.temperature += ((total_dispersed /1000000) * (total_dispersed/1000000))/2 //dispersing 1 mil watts is 0.5 heat per tick dispersing 4 mil watts it 8 heat per tick.
 /obj/machinery/power/modification/surge_protector/attackby(obj/item/weapon/W , mob/user , params)
-	if(istype(W , /obj/item/weapon/wrench))
-		if(anchored)
-			user<<"<span class='notice'>You remove the [src.name]'s bolts.</span>"
-			anchored = 0
-			return
-		else
-			user<<"<span class='notice'>You secure the [src.name]'s bolts.</span>"
-			anchored = 1
 	if(istype(W , /obj/item/weapon/screwdriver))
-		if(max_volts + 10000 >= 200000)
-			max_volts = 50000
+		if(max_voltage + 10000 >= 200000)
+			max_voltage = 50000
 		else
-			max_volts += 10000
+			max_voltage += 10000
 		user<<"<span class='notice'>You adjust the voltage setting on the [src.name] to [max_voltage]v</span>"
 	else if(istype(W , /obj/item/device/multitool))
 		if(max_amps + 100 >= 1000)
@@ -466,7 +456,6 @@
 			if(connected)
 				connected.update_connections()
 				connected = null
-			return
 		else
 			user<<"<span class='notice'>You secure the [src.name]'s bolts.</span>"
 			anchored = 1
@@ -528,17 +517,14 @@
 	name = "High Power Capacitor"
 	desc = "A is able to store small amounts of power in order to create an UPS"
 	var/max_power = 5000000
-
 /obj/machinery/power/modification/power_capacitor/examine(mob/user)
 	user<<"The power storage gauge reads [stored_power]W"
-
 /obj/machinery/power/modification/power_capacitor/proc/remove_power(amount)
 	if(stored_power >= amount)
 		stored_power -= amount
 		return 1
 	else
 		return 0
-
 /obj/machinery/power/modification/power_capacitor/process()
 	if(stored_power)
 		var/turf/simulated/location = loc
@@ -558,7 +544,6 @@
 						s.set_up(5, 1, src)
 						s.start()
 						Destroy()
-
 /obj/machinery/power/modification/power_capacitor/attackby(obj/item/weapon/W , mob/user , params)
 	if(istype(W , /obj/item/weapon/wrench))
 		if(anchored)
@@ -567,7 +552,6 @@
 			if(connected)
 				connected.update_connections()
 				connected = null
-			return
 		else
 			user<<"<span class='notice'>You secure the [src.name]'s bolts.</span>"
 			anchored = 1
@@ -583,18 +567,15 @@
 				left.update_connections()
 			if(right)
 				right.update_connections()
-
 /obj/machinery/power/modification/power_capacitor/proc/add_power(power)
 	if(stored_power + power <= max_power)
 		stored_power += power
 		return 1
 	else
 		return 0
-
 /obj/machinery/power/modification/power_emitter
 	name = "High power disperser"
 	desc = "A machine capable of rapidly transferring large amounts of power."
-
 /obj/machinery/power/modification/power_emitter/proc/restore()
 	var/excess = powernet.avail - powernet.load
 	if(stored_power + excess <= 5000000)
@@ -603,7 +584,6 @@
 	else
 		add_load(5000000 - stored_power)
 		stored_power += 5000000 - stored_power
-
 /obj/machinery/power/modification/power_emitter/attackby(obj/item/W, mob/user, params)
 	if(istype(W , /obj/item/weapon/screwdriver))
 		if(output_power + 100000 > 5000000)
@@ -618,7 +598,6 @@
 			if(connected)
 				connected.update_connections()
 				connected = null
-			return
 		else
 			user<<"<span class='notice'>You secure the [src.name]'s bolts.</span>"
 			anchored = 1
@@ -634,7 +613,6 @@
 				left.update_connections()
 			if(right)
 				right.update_connections()
-
 /obj/machinery/power/modification/power_emitter/Destroy()
 	..()
 	if(connected)
@@ -661,7 +639,6 @@
 		add_avail(output_power,voltage)
 		stored_power -= output_power
 		return
-
 /obj/machinery/power/controller
 	name = "You should not see this"
 	desc = "Groups input power into a single output without generating extra load."
@@ -674,10 +651,8 @@
 	var/power = 0
 	var/obj/machinery/power/connected
 	var/list/connections = list()
-
 /obj/machinery/power/controller/Destroy()
 	SSmachine.processing -= src
-
 /obj/machinery/power/controller/New()
 	update_connections()
 	var/obj/machinery/power/controller/up = locate(/obj/machinery/power/controller) in get_step(src,NORTH)
@@ -693,7 +668,6 @@
 	if(right)
 		right.update_connections()
 	SSmachine.processing |= src
-
 /obj/machinery/power/controller/attackby(obj/item/W, mob/user, params)
 	if(istype(W , /obj/item/weapon/wrench))
 		if(anchored)
@@ -704,7 +678,6 @@
 			user<<"<span class='notice'>You secure the [src.name]'s bolts.</span>"
 			anchored = 1
 			update_connections()
-
 /obj/machinery/power/controller/proc/update_connections()
 	for(var/obj/machinery/power/modification/m in connections)
 		m.connected = null
@@ -738,7 +711,6 @@
 	desc = "Groups input power into a single output without generating extra load."
 	efficiency = 0.99
 	var/voltage = 5000
-
 /obj/machinery/power/controller/power_grouper/examine(mob/user)
 	user<<"The power storage gauge reads [power]W"
 
@@ -854,7 +826,6 @@
 	var/starting_voltage = 5000
 	var/output_power = 1200000
 	var/inverted = 0
-
 /obj/machinery/power/controller/power_transformer/attackby(obj/item/W, mob/user, params)
 	if(istype(W , /obj/item/weapon/screwdriver))
 		update_connections()//confirm that the devices haven't changed since before.

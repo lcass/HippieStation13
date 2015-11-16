@@ -151,9 +151,6 @@ By design, d1 is the smallest direction and d2 is the highest
 		var/datum/effect/effect/system/spark_spread/s = new /datum/effect/effect/system/spark_spread
 		s.set_up(5, 3, src)
 		s.start()
-		if(powernet.avail - powernet.load < 25000)
-			return
-		add_load(25000)
 		for(var/mob/living/carbon/M in view(4,src.loc))
 			electrocute_mob(M, powernet, src, 0.4)
 		if(prob(100-((1000000/voltage)*100)))//higher probability at higher voltages
@@ -162,26 +159,27 @@ By design, d1 is the smallest direction and d2 is the highest
 			for(var/obj/machinery/door/airlock/door in view(rand(1,5),src.loc))
 				if(prob(15))
 					door.emag_act(null)
+			delete = 1
 	else if(voltage >= 750000 && prob(5))
 		var/datum/effect/effect/system/spark_spread/s = new /datum/effect/effect/system/spark_spread
 		s.set_up(5, 2, src)
 		s.start()
-		if(powernet.avail - powernet.load < 25000)
-			return
-		add_load(25000)
 		for(var/mob/living/carbon/M in view(3,src.loc))
 			electrocute_mob(M, powernet, src, 0.3)
 	else if(voltage >= 250000 && prob(5))
 		var/datum/effect/effect/system/spark_spread/s = new /datum/effect/effect/system/spark_spread
 		s.set_up(5, 1, src)
 		s.start()
-		if(powernet.avail - powernet.load < 25000)
-			return
-		add_load(25000)
 		for(var/mob/living/carbon/M in view(2,src.loc))
+
 			electrocute_mob(M, powernet, src, 0.2)
 
 	else if(voltage >= 100000 && prob(5))
+		for(var/mob/living/carbon/M in view(1,src.loc))
+			var/datum/effect/effect/system/spark_spread/s = new /datum/effect/effect/system/spark_spread
+			s.set_up(5, 1, src)
+			s.start()
+			electrocute_mob(M, powernet, src, 0.1)
 		if(prob(100-((40000/voltage)*100)))
 			for(var/obj/machinery/light/light in view(rand(1,15),src.loc))
 				light.Destroy()
